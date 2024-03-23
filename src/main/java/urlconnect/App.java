@@ -3,156 +3,119 @@
  */
 package urlconnect;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import javax.json.Json;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.io.IOException;
+import java.util.Base64;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
+import javax.json.JsonObject;
+import java.io.StringReader;
+
 
 public class App {
-  private static void logError(String messg, Exception e) {
-    System.err.println(messg);
-    e.printStackTrace(System.err);
+
+  private static String appKeyId = "005e6f0ff38588b0000000009";
+  private static String appKey = "K005XCpRP+hm5xAupUxYI3xA0D8QwoQ";
+  
+    public static void main(String[] args) {
+      try {
+        URL url = new URL("https://api.backblazeb2.com" + "/b2api/v2/" + "b2_authorize_account");
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            String encodedAuth = encodeAuthorization(appKeyId + ":" + appKey);
+            connection.setRequestProperty("Authorization", encodedAuth);
+            connection.setConnectTimeout(5000);   
+            connection.setReadTimeout(1000);
+      try {
+    try (InputStream inputStream = connection.getInputStream()) {
+        String respStr = readInputStream(inputStream);
+        JsonObject response = Json.createReader(new StringReader(respStr)).readObject();
+        
+        String authToken = response.getString("authorizationToken");
+        // String apiUrl = response.getString("apiUrl");
+        // String accountId = response.getString("accountId");
+        String downloadUrl = response.getString("downloadUrl");
+        
+        
+        System.out.println("Download URL: " + downloadUrl);
+        System.out.println("Authentication Token: " + authToken);
+    }
+} 
+
+  finally {
+    connection.disconnect();
+  }
+      } catch (Exception e) {
+        System.out.println("에러: " + e.getMessage());
+      }
+      
   }
 
-  private static Optional<String> doGet(String target) {
-    BufferedReader reader = null;
+  private static String encodeAuthorization(String input){
+        byte[] authorizationBytes = input.getBytes(StandardCharsets.UTF_8);
+        String encodedAuthorization = Base64.getEncoder().encodeToString(authorizationBytes);
+        return "Basic " + encodedAuthorization;
+    }
+    
+      public static String readInputStream(InputStream inputStream) {
+        StringBuilder stringBuilder = new StringBuilder();
+        String line;
 
-    try {
-      URL url = new URL(target);
-      HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-      connection.setRequestMethod("GET");
-      connection.setReadTimeout(10 * 1000); // 10 sec
-      connection.connect();
-
-      reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-
-      StringBuilder stringBuilder = new StringBuilder();
-      String line;
-      while ((line = reader.readLine()) != null) {
-        stringBuilder.append(line).append("\n");
-      }
-      return Optional.of(stringBuilder.toString());
-    } catch (Exception e) {
-      logError("Failed to Get url: " + target, e);
-      return Optional.empty();
-    } finally {
-      if (reader != null) {
-        try {
-          reader.close();
-        } catch (IOException ioe) {
-          logError("Failed to close buffered reader", ioe);
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, Charset.forName("utf-8")))) {
+            while (true) {
+                line = reader.readLine();
+                if (line == null) break;
+                stringBuilder.append(line);
+            }
+        } catch (IOException e) {
+            // Handle IOException as needed
+            System.out.println("에러: " + e.getMessage());
         }
-      }
+
+        return stringBuilder.toString();
     }
-  }
+    
+    // private static void downloadFile(String URL, String authorization, B2File file, File destination)  {
+    //     try {
+    //         URL url = new URL(URL + "/b2api/v3/b2_download_file_by_id");
+    //         HttpsURLConnection connection = (HttpsURLConnection) url.openConnection();
+    //         connection.setRequestMethod("POST");
+    //         connection.setRequestProperty("User-Agent", USER_AGENT);
+    //         connection.setRequestProperty("Authorization", authorization);
 
-  private static final class PriceList {
-    public final long totalRecords;
-    public final Pricing[] data;
+    //         connection.setDoOutput(true);
+    //         DataOutputStream outputStream = new DataOutputStream(connection.getOutputStream());
+    //         outputStream.writeBytes(new JSONObject().put("fileId", file.getID()).toString());
+    //         outputStream.flush();
+    //         outputStream.close();
 
-    public PriceList(long totalRecords, Pricing[] data) {
-      this.totalRecords = totalRecords;
-      this.data = data;
-    }
-  }
+    //         if(connection.getResponseCode() < 400){
+    //             InputStream inputStream =  connection.getInputStream();
+    //             OutputStream fileOutputStream = new FileOutputStream(destination);
 
-  private static final class HoldingList {
-    public final long totalRecords;
-    public final Holding[] data;
+    //             int read = 0;
+    //             byte[] bytes = new byte[1024];
 
-    public HoldingList(long totalRecords, Holding[] data) {
-      this.totalRecords = totalRecords;
-      this.data = data;
-    }
-  }
+    //             while ((read = inputStream.read(bytes)) != -1) {
+    //                 fileOutputStream.write(bytes, 0, read);
+    //             }
+    //             fileOutputStream.close();
+    //             connection.disconnect();
+    //         }else{
+    //             InputStream errorStream =  connection.getErrorStream();
+    //             JSONObject requestResult = inputToJSON(errorStream);
 
-  private static final class Pricing {
-    public final String date;
-    public final String security;
-    public final double price;
+    //             B2APIException exception = new B2APIException(requestResult.getString("message"));
+    //             exception.setStatusCode(requestResult.getInt("status"));
+    //             exception.setIdentifier(requestResult.getString("code"));
+    //             throw exception;
+    //         }
 
-    public Pricing(String date, String security, double price) {
-      this.date = date;
-      this.security = security;
-      this.price = price;
-    }
-  }
-
-  private static final class Holding {
-    public final String date;
-    public final String security;
-    public final double quantity;
-
-    public Holding(String date, String security, double quantity) {
-      this.date = date;
-      this.security = security;
-      this.quantity = quantity;
-    }
-  }
-
-  private static List<Pricing> getPrices(String date) {
-    Optional<PriceList> allPrices =
-        doGet("https://api.myjson.com/bins/vf9ac").map(App::parsePrices);
-
-    return allPrices
-        .map(
-            priceList ->
-                Arrays.stream(priceList.data)
-                    .filter(p -> date.equals(p.date))
-                    .collect(Collectors.toList()))
-        .orElse(Collections.emptyList());
-  }
-
-  private static PriceList parsePrices(String json) {
-    Gson gson = new GsonBuilder().create();
-    return gson.fromJson(json, PriceList.class);
-  }
-
-  private static List<Holding> getHoldings(String date) {
-    Optional<HoldingList> allHoldings =
-        doGet("https://api.myjson.com/bins/1eleys").map(App::parseHoldings);
-
-    return allHoldings
-        .map(
-            holdingList ->
-                Arrays.stream(holdingList.data)
-                    .filter(p -> date.equals(p.date))
-                    .collect(Collectors.toList()))
-        .orElse(Collections.emptyList());
-  }
-
-  private static HoldingList parseHoldings(String json) {
-    Gson gson = new GsonBuilder().create();
-    return gson.fromJson(json, HoldingList.class);
-  }
-
-  public static double calculateHoldingValue(String date) {
-    List<Holding> holdings = getHoldings(date);
-
-    if (!holdings.isEmpty()) {
-      Map<String, Double> pricings =
-          getPrices(date).stream().collect(Collectors.toMap(p -> p.security, p -> p.price));
-
-      return holdings.stream()
-          .reduce(
-              0.0,
-              (sum, h) -> sum + h.quantity * pricings.getOrDefault(h.security, 0.0),
-              Double::sum);
-    }
-    return 0.0;
-  }
-
-  public static void main(String[] args) {
-    System.out.println(calculateHoldingValue("20190506"));
-  }
+    //     } catch (IOException ignored) {}
+    // }
 }
+
